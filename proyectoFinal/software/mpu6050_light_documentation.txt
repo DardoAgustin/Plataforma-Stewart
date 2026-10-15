@@ -1,0 +1,249 @@
+================================================================================
+MPU6050_light LIBRARY DOCUMENTATION
+================================================================================
+Author: Romain JL Fetick
+First version: January 2021
+Current version: July 2025
+
+ABSTRACT
+The MPU6050 light library is made for your Arduino to communicate with the 
+MPU6050 device. It retrieves the MPU6050 acceleration, gyroscopic and 
+temperature measurements. The angles of the device are computed from the raw 
+measurements. The tilt angles are computed by a complementary filter between 
+acceleration and gyroscopic data, thus providing quite a good accuracy of 
+estimation.
+
+--------------------------------------------------------------------------------
+CONTENTS
+--------------------------------------------------------------------------------
+1. Introduction
+2. Mathematical expressions
+   2.1 Angle from gyroscopic measurement
+   2.2 Angle from accelerometric measurement
+       2.2.1 Pitch and roll angles
+       2.2.2 Tilt angles
+   2.3 Data fusion with complementary filter
+3. Public attributes
+4. Methods of the MPU6050 class
+   4.1 Constructor and initialisation
+   4.2 Configuration setters
+   4.3 Configuration getter
+   4.4 Update measurement
+   4.5 Data getters
+5. Examples
+6. Authors and license
+
+
+================================================================================
+1. INTRODUCTION
+================================================================================
+The MPU6050 delivers three angular speeds and three linear accelerations. This 
+raw data is directly accessible through the MPU6050 light library. Moreover the 
+library performs basic angle computation from this data. Indeed an integration 
+of the angular speed gives the angles. However any small bias in the angular 
+speed measurement is integrated and leads to a severe drift of the estimated 
+angle. This must be corrected using another information, that is provided by 
+the accelerometer. The gravity is supposed to be the main component of the 
+acceleration, so a projection of the gravity on the MPU6050 axis gives a rough 
+(and noisy) estimate of the tilt angles of the device.
+
+Merging the angles estimated from gyroscopic and accelerometric data provides 
+a good estimation of the MPU6050 angles. A complementary filter performs the 
+merging of the two sources. For this library, the gyroscopic data is weighted 
+with a 0.98 factor, whereas the accelerometric data is weighted with the 
+complementary 0.02 factor. This factor can be fine tuned by the user. The main 
+hypothesises to ensure the consistency of the angle estimation are:
+- Small loop delay between two calls to the update() function, so the 
+  approximation made for the numerical integration of the angular speed holds 
+  $\theta_{g}[i] \simeq \theta_{g}[i-1] + \dot{\theta}_{g}[i] \cdot dt$
+- Small linear accelerations (the gravity is the main one). This constraint can 
+  be loosened since the complementary filter gives few confidence in angles 
+  computed from acceleration (only 2% of confidence as default value)
+- Small tilt angles (due to approximations in the trigonometric equations)
+
+
+================================================================================
+2. MATHEMATICAL EXPRESSIONS
+================================================================================
+The MPU6050 provides acceleration and gyroscopic measurement on the three axis 
+X, Y and Z of the device. These axis have to be differentiated from the $X_{0}$, 
+$Y_{0}$ and $Z_{0}$ reference (North-West-Zenith) axis.
+
+2.1 Angle from gyroscopic measurement
+The angle around the X axis is found by integrating the gyroscopic data 
+$\theta_{x}$ over a small amount of time $\delta t$ such as:
+$\theta_{x}(t+\delta t) \simeq \theta_{x}(t) + \dot{\theta}_{x} \cdot \delta t$
+(The same equations hold for the Y and Z axis).
+
+2.2 Angle from accelerometric measurement
+2.2.1 Pitch and roll angles
+The transformation matrix from Earth frame to MPU6050 frame is:
+$R = \begin{pmatrix} \cos\alpha & 0 & \sin\alpha \\ \sin\alpha\sin\beta & \cos\beta & -\cos\alpha\sin\beta \\ -\sin\alpha\cos\beta & \sin\beta & \cos\alpha\cos\beta \end{pmatrix}$
+with a first rotation $\alpha$ (pitch) around the Earth $Y_{0}$ axis, and then 
+a rotation $\beta$ (roll) around the device X axis. Since the roll is around 
+the MPU6050 axis, we directly get the identity $\beta = \theta_{x}$.
+
+The gravity vector in the MPU6050 frame reads:
+$\begin{pmatrix} a_{x} \\ a_{y} \\ a_{z} \end{pmatrix} = R \cdot \begin{pmatrix} 0 \\ 0 \\ -g \end{pmatrix} = -g \begin{pmatrix} \sin\alpha \\ -\cos\alpha\sin\theta_{x} \\ \cos\alpha\cos\theta_{x} \end{pmatrix}$
+
+One can express the angles as function of the accelerometric measurements:
+$\frac{a_{x}}{\sqrt{a_{y}^{2} + a_{z}^{2}}} = \frac{\sin\alpha}{|\cos\alpha|}$
+$\frac{a_{y}}{a_{z}} = -\tan\theta_{x}$
+
+2.2.2 Tilt angles
+The tilt angles are given such as:
+$\tan\phi_{x} = \operatorname{sgn}(a_{z}) \frac{a_{y}}{\sqrt{a_{x}^{2} + a_{z}^{2}}}$
+$\tan\phi_{y} = \frac{a_{x}}{\sqrt{a_{y}^{2} + a_{z}^{2}}}$
+We note that the tilt angle around $Y_{0}$ corresponds to the pitch of the device, 
+we directly get the identity $\phi_{x} = \alpha$.
+
+2.3 Data fusion with complementary filter
+The angles estimated from gyroscopic and accelerometric data are merged together 
+using a complementary filter.
+
+
+================================================================================
+3. PUBLIC ATTRIBUTES
+================================================================================
+- upsideDownMounting: The only accessible (public) attribute of the MPU6050 class. 
+  Setting it to true allows to make the library to work properly when the device 
+  is mounted upside down as if it was upside up. Default value: false.
+
+
+================================================================================
+4. METHODS OF THE MPU6050 CLASS
+================================================================================
+
+4.1 Constructor and initialisation
+- MPU6050(TwoWire &w): Constructor. Needs to be called with Wire.
+- begin(int gyroConfig = 1, int accConfig = 0): void
+  Start communication with the MPU6050 device. User may choose a gyroscope 
+  configuration (from 0 to 3) and accelerometer configuration (from 0 to 3) that 
+  set the sensitivity and working range of the device. The configuration list 
+  can be found on the Invensense website.
+  The function returns a byte to check the success of the connection ($0 =$ success).
+- calcOffsets(bool calcGyro = true, bool calcAcc = true): void
+  Compute gyroscope and accelerometer offsets to remove measurement bias. MPU6050 
+  device must be on a flat surface during the calibration.
+
+4.2 Configuration setters
+- setAddress(uint8_t): void
+  Set the device address, default is 0x68.
+- setGyroOffsets(float x, float y, float z): void
+  Manually set gyroscope offsets if you already know them. Otherwise use the 
+  method calcOffsets().
+- setAccOffsets(float x, float y, float z): void
+  Manually set accelerometer offsets if you already know them. Otherwise use 
+  the method calcOffsets().
+- setFilterGyroCoef(float fg): void
+  Set the gyroscope coefficient for the complementary filter. The coefficient 
+  must be between 0 (accelero data only) and 1 (gyro data only). Recommended 
+  value $f_{g} = 0.98$. This function automatically sets the accelerometer 
+  coefficient to $f_{a} = 1 - f_{g}$.
+- setFilterAccCoef(float fa): void
+  Set the accelerometer coefficient for the complementary filter. The coefficient 
+  must be between 0 (gyro data only) and 1 (accelero data only). Recommended 
+  value $f_{a} = 0.02$. This function automatically sets the gyroscope 
+  coefficient to $f_{g} = 1 - f_{a}$.
+
+4.3 Configuration getter
+- getAddress(): uint8_t
+  Get the device address, default is 0x68.
+- getAccXoffset(), getAccYoffset(), getAccZoffset(): float
+  Offset on the accelerometer data on the respective axis.
+  Units: data is given as multiple of the gravity norm $g = 9.81\text{ m}\cdot\text{s}^{-2}$.
+- getGyroXoffset(), getGyroYoffset(), getGyroZoffset(): float
+  Offset on the gyroscope around the respective axis.
+  Units: data is given in degrees per second.
+
+4.4 Update measurement
+- update(): void
+  Update data. This function must be called in the loop as often as possible to 
+  get consistent angleX, angleY and angleZ. Indeed these angles rely on the 
+  integration of the gyroscope data between two updates, a longer delay leads 
+  to a less accurate integration.
+
+4.5 Data getters
+- getTemp(): float
+  Last measurement of the device temperature. Units: Celsius degrees.
+- getAccX(), getAccY(), getAccZ(): float
+  Last measurement of the acceleration on the respective axis.
+  Units: data is given as multiple of the gravity norm $g = 9.81\text{ m}\cdot\text{s}^{-2}$.
+- getGyroX(), getGyroY(), getGyroZ(): float
+  Last measurement of the angular speed around the respective axis.
+  Units: data is given in degrees per second.
+- getAccAngleX(), getAccAngleY(): float
+  Estimated angle around the respective axis, computed with the accelerometer 
+  data (tilt of the gravity vector). This data is noisy, and is valid only for 
+  small linear accelerations (the gravity is the major acceleration). It is 
+  better to use the angle given by getAngleX() function. Units: degrees.
+- getAngleX(), getAngleY(), getAngleZ(): float
+  Estimated angle around the respective axis. The angle is computed through a 
+  complementary filter merging data from accelerometer and gyroscope integration. 
+  This might be the best estimate of the angles provided by this library. 
+  Units: degrees.
+
+
+================================================================================
+5. EXAMPLES
+================================================================================
+
+Example 1: Minimal Code
+--------------------------------------------------------------------------------
+#include "Wire.h"
+#include <MPU6050_light.h>
+
+MPU6050 mpu(Wire);
+
+void setup() {
+  Wire.begin();
+  mpu.setAddress(0x68); // if you wish to modify the address
+  mpu.begin();          // start communication
+  mpu.calcOffsets();    // set MPU on flat surface for this task
+}
+
+void loop() {
+  mpu.update();
+
+  float angle[3] = {mpu.getAngleX(),
+                    mpu.getAngleY(),
+                    mpu.getAngleZ()};
+
+  float gyro[3]  = {mpu.getGyroX(),
+                    mpu.getGyroY(),
+                    mpu.getGyroZ()};
+
+  // process this data for your needs...
+  // (do something...)
+}
+
+
+Example 2: Setup Fine-Tuning Code
+--------------------------------------------------------------------------------
+void setup() {
+  Wire.begin();
+  mpu.setAddress(0x68); // if you wish to modify the address
+
+  // define gyro and accelero configuration
+  // tuning sensitivity vs range (from 0 to 3)
+  byte status = mpu.begin(1, 0);
+
+  // if initialisation error > stop
+  while (status != 0) { }
+
+  // define which offset (gyro, accelero) to compute
+  mpu.calcOffsets(true, true);
+
+  // define custom complementary filter (from 0.0 to 1.0)
+  mpu.setFilterGyroCoef(0.98);
+}
+
+
+================================================================================
+6. AUTHORS AND LICENSE
+================================================================================
+- RFETICK (github.com/rfetick): modifications and documentation
+- TOCKN (github.com/tockn): initial author (forked from v1.5.2)
+
+The MPU6050_light library is provided under the MIT license. Please check the 
+LICENSE file included with the library for more information.
