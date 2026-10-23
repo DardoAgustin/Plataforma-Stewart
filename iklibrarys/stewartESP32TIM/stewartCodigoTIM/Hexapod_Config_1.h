@@ -33,8 +33,8 @@
  */
 const double SERVO_FULL_ANGULAR_RANGE = radians(180);
 const double SERVO_HALF_ANGULAR_RANGE = SERVO_FULL_ANGULAR_RANGE / 2;
-const int SERVO_MIN_PWM = 500;    // µs (era 183)
-const int SERVO_MAX_PWM = 2500;   // µs (era 467)
+const int SERVO_MIN_PWM = 0;    // µs (era 183)
+const int SERVO_MAX_PWM = 180;   // µs (era 467)
 
 /*
  * Offset values in µs to compensate for arm angle errors.
